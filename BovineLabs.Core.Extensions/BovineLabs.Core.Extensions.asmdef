@@ -16,7 +16,8 @@
         "Unity.ResourceManager",
         "Unity.Scenes",
         "Unity.Transforms",
-        "Unity.Transforms.Hybrid"
+        "Unity.Transforms.Hybrid",
+		"Unity.NetCode"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
