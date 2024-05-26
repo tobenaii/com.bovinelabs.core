@@ -71,15 +71,21 @@ namespace BovineLabs.Core.Extensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void AddSystemDependency(ref this SystemState state, TypeIndex typeIndex, bool isReadOnly = false)
+        public static void AddDependency(ref this SystemState state, TypeIndex typeIndex, bool isReadOnly = false)
         {
-            state.AddSystemDependency(isReadOnly ? ComponentType.ReadOnly(typeIndex) : ComponentType.ReadWrite(typeIndex));
+            state.AddDependency(isReadOnly ? ComponentType.ReadOnly(typeIndex) : ComponentType.ReadWrite(typeIndex));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void AddSystemDependency(ref this SystemState state, ComponentType componentType)
+        public static void AddDependency(ref this SystemState state, ComponentType componentType)
         {
             state.AddReaderWriter(componentType);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void AddDependency<T>(ref this SystemState state, bool isReadOnly = false)
+        {
+            state.AddDependency(isReadOnly ? ComponentType.ReadOnly<T>() : ComponentType.ReadWrite<T>());
         }
 
         public static Entity GetSingletonEntity<T>(ref this SystemState state)

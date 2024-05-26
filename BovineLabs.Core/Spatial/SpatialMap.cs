@@ -8,7 +8,7 @@ namespace BovineLabs.Core.Spatial
     using System.Diagnostics;
     using System.Diagnostics.CodeAnalysis;
     using System.Runtime.CompilerServices;
-    using BovineLabs.Core.Collections;
+    using BovineLabs.Core.Extensions;
     using Unity.Burst;
     using Unity.Collections;
     using Unity.Jobs;
@@ -23,7 +23,7 @@ namespace BovineLabs.Core.Spatial
         private readonly int quantizeSize;
         private readonly int2 halfSize;
 
-        private NativeKeyedMap<int> map;
+        private NativeParallelMultiHashMap<int, int> map;
 
         public SpatialMap(float quantizeStep, int size, Allocator allocator = Allocator.Persistent)
         {
@@ -31,7 +31,7 @@ namespace BovineLabs.Core.Spatial
             this.quantizeSize = (int)math.ceil(size / quantizeStep);
             this.halfSize = new int2(size) / 2;
 
-            this.map = new NativeKeyedMap<int>(0, this.quantizeSize * this.quantizeSize, allocator);
+            this.map = new NativeParallelMultiHashMap<int, int>(0, allocator);
         }
 
         public bool IsCreated => this.map.IsCreated;
@@ -49,16 +49,16 @@ namespace BovineLabs.Core.Spatial
             this.map.Dispose(dependency);
         }
 
-        public JobHandle Build(NativeList<T> positions, JobHandle dependency, ResizeNativeKeyedMapJob resizeStub = default, QuantizeJob quantizeStub = default)
+        public JobHandle Build(NativeList<T> positions, JobHandle dependency, ResizeNativeParallelHashMapJob resizeStub = default, QuantizeJob quantizeStub = default)
         {
             return this.Build(positions.AsDeferredJobArray(), dependency, resizeStub, quantizeStub);
         }
 
         [SuppressMessage("ReSharper", "UnusedParameter.Global", Justification = "Sneaky way to allow this to run in bursted ISystem")]
-        public JobHandle Build(NativeArray<T> positions, JobHandle dependency, ResizeNativeKeyedMapJob resizeStub = default, QuantizeJob quantizeStub = default)
+        public JobHandle Build(NativeArray<T> positions, JobHandle dependency, ResizeNativeParallelHashMapJob resizeStub = default, QuantizeJob quantizeStub = default)
         {
             // Deferred native arrays are supported so we must part it into the job to get the length
-            dependency = new ResizeNativeKeyedMapJob
+            dependency = new ResizeNativeParallelHashMapJob
                 {
                     Length = positions,
                     Map = this.map,
@@ -95,9 +95,9 @@ namespace BovineLabs.Core.Spatial
 
         // Jobs outside to avoid generic issues
         [BurstCompile]
-        public struct ResizeNativeKeyedMapJob : IJob
+        public struct ResizeNativeParallelHashMapJob : IJob
         {
-            public NativeKeyedMap<int> Map;
+            public NativeParallelMultiHashMap<int, int> Map;
 
             [ReadOnly]
             public NativeArray<T> Length;
@@ -110,7 +110,7 @@ namespace BovineLabs.Core.Spatial
                 }
 
                 this.Map.Clear();
-                this.Map.SetLength(this.Length.Length);
+                this.Map.SetAllocatedIndexLength(this.Length.Length);
             }
         }
 
@@ -122,7 +122,7 @@ namespace BovineLabs.Core.Spatial
             public NativeArray<T> Positions;
 
             [NativeDisableParallelForRestriction]
-            public NativeKeyedMap<int> Map;
+            public NativeParallelMultiHashMap<int, int> Map;
 
             public float QuantizeStep;
             public int QuantizeWidth;
@@ -141,8 +141,8 @@ namespace BovineLabs.Core.Spatial
                     end += this.Positions.Length % this.Workers;
                 }
 
-                var keys = this.Map.GetUnsafeKeysPtr();
-                var values = this.Map.GetUnsafeValuesPtr();
+                var keys = (int*)this.Map.GetUnsafeBucketData().keys;
+                var values = (int*)this.Map.GetUnsafeBucketData().values;
 
                 for (var entityInQueryIndex = start; entityInQueryIndex < end; entityInQueryIndex++)
                 {
@@ -194,7 +194,7 @@ namespace BovineLabs.Core.Spatial
             private readonly int quantizeWidth;
             private readonly int2 halfSize;
 
-            public ReadOnly(float quantizeStep, int quantizeWidth, int2 halfSize, NativeKeyedMap<int> map)
+            public ReadOnly(float quantizeStep, int quantizeWidth, int2 halfSize, NativeParallelMultiHashMap<int, int> map)
             {
                 this.quantizeStep = quantizeStep;
                 this.quantizeWidth = quantizeWidth;
@@ -203,7 +203,7 @@ namespace BovineLabs.Core.Spatial
             }
 
             [field: ReadOnly]
-            public NativeKeyedMap<int> Map { get; }
+            public NativeParallelMultiHashMap<int, int> Map { get; }
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public int2 Quantized(float2 position)
@@ -221,7 +221,7 @@ namespace BovineLabs.Core.Spatial
         [BurstCompile]
         internal struct CalculateMap : IJob
         {
-            public NativeKeyedMap<int> SpatialHashMap;
+            public NativeParallelMultiHashMap<int, int> SpatialHashMap;
 
             public void Execute()
             {
